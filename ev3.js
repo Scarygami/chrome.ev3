@@ -26,6 +26,7 @@
   function EV3() {
     var
       that = this,
+      seq = 0x0000,
       profile = {"uuid": UUID},
       current_device,
       devices = [],
@@ -130,6 +131,12 @@
 
     function rawwrite(data, callback) {
       var buffer, view, l;
+      
+      if (seq >= 0xFFFF) {
+        seq = 0x0000; 
+      }
+      seq += 1;
+      
       if (!current_device || !current_socket) {
         if (!!callback) {
           try { callback(); } catch (e) {
@@ -138,13 +145,15 @@
         }
         return;
       }
-      l = data.length;
-      buffer = new ArrayBuffer(2 + data.length);
+      l = data.length + 2;
+      buffer = new ArrayBuffer(l + 2);
       view = new Uint8Array(buffer);
       view[0] = l & 0xFF;
       view[1] = (l >> 8) & 0xFF;
+      view[2] = (seq >> 8) & 0xFF;
+      view[3] = seq & 0xFF;
       for (i = 0; i < data.length; i++) {
-        view[2 + i] = data[i] & 0xFF;
+        view[4 + i] = data[i] & 0xFF;
       }
 
       bt.write({"socket": current_socket, "data": buffer}, function (r) {
@@ -156,11 +165,8 @@
       });      
     }
 
-    function write(seq, commandType, globalSize, localSize, data, callback) {
+    function write(commandType, globalSize, localSize, data, callback) {
       var command = [], i;
-      
-      command.push(seq & 0xFF);
-      command.push((seq >> 8) & 0xFF);
 
       if (commandType === COMMAND_TYPE.DirectReply || commandType === COMMAND_TYPE.DirectNoReply) {
         // 2 bytes (llllllgg gggggggg)
@@ -225,6 +231,8 @@
         } else {
           con.log("EV3 connected");
           current_device = device;
+          // Reset sequence counter
+          seq = 0x0000;
           if (!!callback) {
             try { callback(); } catch (e) {
               con.log("Error calling connect callback", e);
@@ -296,28 +304,38 @@
     // Functions to actually controll the EV3
     
     this.motor = {};
+
     this.motor.start = function (ports, callback) {
-      write(0, COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStart, 0, ports], callback);
+      write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStart, 0, ports], callback);
     };
     
     this.motor.turnAtPower = function (ports, power, callback) {
       // Valid power values are between -100 and +100
       power = Math.min(100, Math.max(-100, power));
-      write(0, COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputPower, 0, ports, PARAMETER_SIZE.Byte, power], callback);
+      write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputPower, 0, ports, PARAMETER_SIZE.Byte, power], callback);
     };
     
     this.motor.stop = function (ports, brake) {
-      write(0, COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStop, 0, ports, PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00], callback);
+      write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStop, 0, ports, PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00], callback);
     };
 
-    // Functions mainly meant for debugging
-    this.write = function (seq, commandType, globalSize, localSize, data) {
-      write(seq, commandType, globalSize, localSize, data);
+    // Parameter values to be used in functions
+    
+    this.OUTPUT_PORT = OUTPUT_PORT;
+
+
+    // Functions/parameters mainly meant for debugging
+    this.debug = {};
+    this.debug.write = function (commandType, globalSize, localSize, data) {
+      write(commandType, globalSize, localSize, data);
     };
-    this.rawwrite = function (data) { rawwrite(data); };
-    this.getSocket = function () { return current_socket; };
-    this.getDevice = function () { return current_device; };
-    this.getProfile = function () { return profile; };
+    this.debug.rawwrite = function (data) { rawwrite(data); };
+    this.debug.getSocket = function () { return current_socket; };
+    this.debug.getDevice = function () { return current_device; };
+    this.debug.getProfile = function () { return profile; };
+    this.debug.COMMAND_TYPE = COMMAND_TYPE;
+    this.debug.OP_CODE = OP_CODE;
+    this.debug.PARAMETER_SIZE = PARAMETER_SIZE;
   }
 
   global.ev3 = new EV3();
