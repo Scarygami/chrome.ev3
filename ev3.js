@@ -301,7 +301,8 @@
     };
     
     this.motor.turnAtPower = function (ports, power, callback) {
-      power = Math.min
+      // Valid power values are between -100 and +100
+      power = Math.min(100, Math.max(-100, power));
       write(0, COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputPower, 0, ports, PARAMETER_SIZE.Byte, power], callback);
     };
     
