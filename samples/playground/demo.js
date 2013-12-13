@@ -31,7 +31,7 @@
             status.textContent = error;
             connect.disabled = false;
           } else {
-            initialize();
+            // initialize();
             status.textContent = "EV3 connected, waiting for input...";
             controls.style.display = "block";
           }

@@ -51,7 +51,7 @@
         "OutputStepSpeed": 0xAE,
         "OutputTimeSpeed": 0xAF,
         "OutputStepSync": 0xB0,
-        "OutputTimeSync": 0xB1  
+        "OutputTimeSync": 0xB1
       },
       OUTPUT_PORT = {
         "A": 0x01,
@@ -68,6 +68,7 @@
       };
 
     function onDeviceDiscovered(device) {
+      con.log(device);
       if (device.paired && device.name.indexOf("EV3") === 0) {
         con.log("EV3 found", device);
         devices.push(device);
@@ -118,7 +119,7 @@
           updateDevices(function () {
             var callback;
             api_ready = true;
-            while(readyCallbacks.length > 0) {
+            while (readyCallbacks.length > 0) {
               callback = readyCallbacks.pop();
               try { callback(); } catch (e) {
                 con.log("Error calling onReady callback", e);
@@ -130,13 +131,13 @@
     }
 
     function rawwrite(data, callback) {
-      var buffer, view, l;
-      
+      var buffer, view, i, l;
+
       if (seq >= 0xFFFF) {
-        seq = 0x0000; 
+        seq = 0x0000;
       }
       seq += 1;
-      
+
       if (!current_device || !current_socket) {
         if (!!callback) {
           try { callback(); } catch (e) {
@@ -146,8 +147,8 @@
         return;
       }
       l = data.length + 2;
-      buffer = new ArrayBuffer(l + 2);
-      view = new Uint8Array(buffer);
+      buffer = new global.ArrayBuffer(l + 2);
+      view = new global.Uint8Array(buffer);
       view[0] = l & 0xFF;
       view[1] = (l >> 8) & 0xFF;
       view[2] = (seq >> 8) & 0xFF;
@@ -155,18 +156,19 @@
       for (i = 0; i < data.length; i++) {
         view[4 + i] = data[i] & 0xFF;
       }
-
       bt.write({"socket": current_socket, "data": buffer}, function (r) {
         if (!!callback) {
           try { callback(); } catch (e) {
             con.log("Error calling connect callback", e);
           }
         }
-      });      
+      });
     }
 
     function write(commandType, globalSize, localSize, data, callback) {
       var command = [], i;
+
+      command.push(commandType);
 
       if (commandType === COMMAND_TYPE.DirectReply || commandType === COMMAND_TYPE.DirectNoReply) {
         // 2 bytes (llllllgg gggggggg)
@@ -241,7 +243,7 @@
         }
       });
     }
-    
+
     function disconnect(callback) {
       if (!current_device || !current_socket) {
         con.log("No device connected");
@@ -300,27 +302,27 @@
     this.updateDevices = function (callback) { updateDevices(callback); };
     this.connect = function (device_id, callback) { connect(device_id, callback); };
     this.disconnect = function (callback) { disconnect(callback); };
-    
+
     // Functions to actually controll the EV3
-    
+
     this.motor = {};
 
     this.motor.start = function (ports, callback) {
       write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStart, 0, ports], callback);
     };
-    
+
     this.motor.turnAtPower = function (ports, power, callback) {
       // Valid power values are between -100 and +100
       power = Math.min(100, Math.max(-100, power));
       write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputPower, 0, ports, PARAMETER_SIZE.Byte, power], callback);
     };
-    
-    this.motor.stop = function (ports, brake) {
+
+    this.motor.stop = function (ports, brake, callback) {
       write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStop, 0, ports, PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00], callback);
     };
 
     // Parameter values to be used in functions
-    
+
     this.OUTPUT_PORT = OUTPUT_PORT;
 
 
