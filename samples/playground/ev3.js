@@ -305,19 +305,88 @@
 
     // Functions to actually controll the EV3
 
-    this.motor = {};
+    this.motors = {};
 
-    this.motor.start = function (ports, callback) {
+    this.motors.start = function (ports, callback) {
       write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStart, 0, ports], callback);
     };
 
-    this.motor.turnAtPower = function (ports, power, callback) {
+    this.motors.turnAtPower = function (ports, power, callback) {
       // Valid power values are between -100 and +100
       power = Math.min(100, Math.max(-100, power));
       write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputPower, 0, ports, PARAMETER_SIZE.Byte, power], callback);
     };
 
-    this.motor.stop = function (ports, brake, callback) {
+    this.motors.turnAtSpeed = function (ports, speed, callback) {
+      speed = Math.min(100, Math.max(-100, speed));
+      write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputSpeed, 0, ports, PARAMETER_SIZE.Byte, speed], callback);
+    };
+    
+    this.motors.stepAtPower = function (ports, power, rampup, constant, rampdown, brake, callback) {
+      power = Math.min(100, Math.max(-100, power));
+      write(
+        COMMAND_TYPE.DirectNoReply, 0, 0,
+        [
+          OP_CODE.OutputStepPower, 0, ports,
+          PARAMETER_SIZE.Byte, power,
+          PARAMETER_SIZE.Int, rampup, rampup >> 8, rampup >> 16, rampup >> 24,
+          PARAMETER_SIZE.Int, constant, constant >> 8, constant >> 16, constant >> 24,
+          PARAMETER_SIZE.Int, rampdown, rampdown >> 8, rampdown >> 16, rampdown >> 24,
+          PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00
+        ],
+        callback
+      );
+    };
+    
+    this.motors.stepAtSpeed = function (ports, speed, rampup, constant, rampdown, brake, callback) {
+      speed = Math.min(100, Math.max(-100, speed));
+      write(
+        COMMAND_TYPE.DirectNoReply, 0, 0,
+        [
+          OP_CODE.OutputStepSpeed, 0, ports,
+          PARAMETER_SIZE.Byte, speed,
+          PARAMETER_SIZE.Int, rampup, rampup >> 8, rampup >> 16, rampup >> 24,
+          PARAMETER_SIZE.Int, constant, constant >> 8, constant >> 16, constant >> 24,
+          PARAMETER_SIZE.Int, rampdown, rampdown >> 8, rampdown >> 16, rampdown >> 24,
+          PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00
+        ],
+        callback
+      );
+    };
+    
+    this.motors.turnAtPowerForTime = function (ports, power, rampup, constant, rampdown, brake, callback) {
+      power = Math.min(100, Math.max(-100, power));
+      write(
+        COMMAND_TYPE.DirectNoReply, 0, 0,
+        [
+          OP_CODE.OutputTimePower, 0, ports,
+          PARAMETER_SIZE.Byte, power,
+          PARAMETER_SIZE.Int, rampup, rampup >> 8, rampup >> 16, rampup >> 24,
+          PARAMETER_SIZE.Int, constant, constant >> 8, constant >> 16, constant >> 24,
+          PARAMETER_SIZE.Int, rampdown, rampdown >> 8, rampdown >> 16, rampdown >> 24,
+          PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00
+        ],
+        callback
+      );
+    };
+    
+    this.motors.turnAtSpeedForTime = function (ports, speed, rampup, constant, rampdown, brake, callback) {
+      speed = Math.min(100, Math.max(-100, speed));
+      write(
+        COMMAND_TYPE.DirectNoReply, 0, 0,
+        [
+          OP_CODE.OutputTimeSpeed, 0, ports,
+          PARAMETER_SIZE.Byte, speed,
+          PARAMETER_SIZE.Int, rampup, rampup >> 8, rampup >> 16, rampup >> 24,
+          PARAMETER_SIZE.Int, constant, constant >> 8, constant >> 16, constant >> 24,
+          PARAMETER_SIZE.Int, rampdown, rampdown >> 8, rampdown >> 16, rampdown >> 24,
+          PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00
+        ],
+        callback
+      );
+    };
+
+    this.motors.stop = function (ports, brake, callback) {
       write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStop, 0, ports, PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00], callback);
     };
 
