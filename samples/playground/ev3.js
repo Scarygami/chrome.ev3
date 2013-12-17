@@ -27,6 +27,7 @@
     var
       that = this,
       seq = 0x0000,
+      commandQueue,
       profile = {"uuid": UUID},
       current_device,
       devices = [],
@@ -104,30 +105,58 @@
         "String": 0x84  // null-terminated string
       };
 
-
-    function waitForResponse(callback) {
-      bt.read({"socket": current_socket}, function (data) {
-        var result = new global.Uint8Array(data);
-        if (result.length > 0) {
-          try { callback(result); } catch (e) {
-            con.log("Error calling connect callback", e);
-          }
-        } else {
-          global.setTimeout(function () {
-            waitForResponse(callback);
-          }, 10);
-        }
-      });
-    }
-
     function safeCallback(callback, data, error) {
       if (!!callback) {
         global.setTimeout(function () {
           try { callback(data, error); } catch(e) {
-            con.log("Error calling connect callback", e);
+            con.log("Error calling callback", e);
           }
         }, 0);
       }
+    }
+
+    commandQueue = {
+      queue: [],
+      running: false,
+      add:
+        function (command, callback) {
+          this.queue.push({"command": command, "callback": callback});
+          if (!this.running) {
+            this.run(); 
+          }
+        },
+      run:
+        function () {
+          var current, that = this;
+          this.running = true; 
+          current = this.queue.shift();
+          current.command.execute(function (data, error) {
+            safeCallback(current.callback, data, error);
+            if (that.queue.length > 0) {
+              that.run();
+            } else {
+              that.running = false; 
+            }
+          });
+        }
+    };
+
+    function waitForResponse(callback, timeout) {
+      bt.read({"socket": current_socket}, function (data) {
+        var result = new global.Uint8Array(data);
+        if (result.length > 0) {
+          // TODO: Error handling
+          callback(result);
+        } else {
+          if (timeout <= 0) {
+            callback(null, "No response");
+          } else {
+            global.setTimeout(function () {
+              waitForResponse(callback, timeout - 10);
+            }, 10);
+          }
+        }
+      });
     }
 
     function Command(type, globalSize, localSize) {
@@ -202,7 +231,7 @@
         if (that.type ===  COMMAND_TYPE.DirectReply) {
           waitForResponse(function (data, error) {
             safeCallback(callback, data, error);
-          });
+          }, 1000);
         } else {
           safeCallback(callback, true); 
         }
@@ -401,7 +430,8 @@
       command.addOpCode(OP_CODE.OutputStart);
       command.addByte(0x00);
       command.addByte(ports);
-      command.execute(callback);
+
+      commandQueue.add(command, callback);
     };
 
     this.motors.turnAtPower = function (ports, power, callback) {
@@ -415,7 +445,7 @@
       command.addByte(ports);
       command.addByte(power);
       
-      command.execute(callback);
+      commandQueue.add(command, callback);
     };
 
     this.motors.turnAtSpeed = function (ports, speed, callback) {
@@ -429,7 +459,7 @@
       command.addByte(ports);
       command.addByte(speed);
       
-      command.execute(callback);
+      commandQueue.add(command, callback);
     };
     
     this.motors.stepAtPower = function (ports, power, rampup, constant, rampdown, brake, callback) {
@@ -447,7 +477,7 @@
       command.addInt(rampdown);
       command.addByte(brake ? 1 : 0);
       
-      command.execute(callback);
+      commandQueue.add(command, callback);
     };
     
     this.motors.stepAtSpeed = function (ports, speed, rampup, constant, rampdown, brake, callback) {
@@ -465,7 +495,7 @@
       command.addInt(rampdown);
       command.addByte(brake ? 1 : 0);
       
-      command.execute(callback);
+      commandQueue.add(command, callback);
     };
     
     this.motors.turnAtPowerForTime = function (ports, power, rampup, constant, rampdown, brake, callback) {
@@ -483,7 +513,7 @@
       command.addInt(rampdown);
       command.addByte(brake ? 1 : 0);
       
-      command.execute(callback);
+      commandQueue.add(command, callback);
     };
     
     this.motors.turnAtSpeedForTime = function (ports, speed, rampup, constant, rampdown, brake, callback) {
@@ -501,7 +531,7 @@
       command.addInt(rampdown);
       command.addByte(brake ? 1 : 0);
       
-      command.execute(callback);
+      commandQueue.add(command, callback);
     };
 
     this.motors.stop = function (ports, brake, callback) {
@@ -511,7 +541,7 @@
       command.addByte(ports);
       command.addByte(brake ? 1 : 0);
 
-      command.execute(callback);
+      commandQueue.add(command, callback);
     };
     
     this.getFirmwareVersion = function (callback) {
@@ -520,7 +550,7 @@
       command.addByte(0x10);
       command.addGlobalIndex(0);
       
-      command.execute(function (data, error) {
+      commandQueue.add(command, function (data, error) {
         // TODO: extract actual data
         safeCallback(callback, data, error);
       });
