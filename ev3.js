@@ -51,7 +51,44 @@
         "OutputStepSpeed": 0xAE,
         "OutputTimeSpeed": 0xAF,
         "OutputStepSync": 0xB0,
-        "OutputTimeSync": 0xB1
+        "OutputTimeSync": 0xB1,
+        "UIRead_GetFirmware": [0x81, 0x0A],
+        "UIWrite_LED": [0x82, 0x1B],
+        "UIButton_Pressed": [0x83, 0x09],
+        "UIDraw_Update": [0x84, 0x00],
+        "UIDraw_Clean": [0x84, 0x01],
+        "UIDraw_Pixel": [0x84, 0x02],
+        "UIDraw_Line": [0x84, 0x03],
+        "UIDraw_Circle": [0x84, 0x04],
+        "UIDraw_Text": [0x84, 0x05],
+        "UIDraw_FillRect": [0x84, 0x09],
+        "UIDraw_Rect": [0x84, 0x0A],
+        "UIDraw_InverseRect": [0x84, 0x10],
+        "UIDraw_SelectFont": [0x84, 0x11],
+        "UIDraw_Topline": [0x84, 0x12],
+        "UIDraw_FillWindow": [0x84, 0x13],
+        "UIDraw_DotLine": [0x84, 0x15],
+        "UIDraw_FillCircle": [0x84, 0x18],
+        "UIDraw_BmpFile": [0x84, 0x1C],
+        
+        "Sound_Break": [0x94, 0x00],
+        "Sound_Tone": [0x94, 0x01],
+        "Sound_Play": [0x94, 0x02],
+        "Sound_Repeat": [0x94, 0x03],
+        "Sound_Service": [0x94, 0x04],
+        
+        "InputDevice_GetTypeMode": [0x99, 0x05],
+        "InputDevice_GetDeviceName": [0x99, 0x15],
+        "InputDevice_GetModeName": [0x99, 0x16],
+        "InputDevice_ReadyPct": [0x99, 0x1B],
+        "InputDevice_ReadyRaw": [0x99, 0x1C],
+        "InputDevice_ReadySI": [0x99, 0x1D],
+        "InputDevice_ClearAll": [0x99, 0x0A],
+        "InputDevice_ClearChanges": [0x99, 0x1A],
+        
+        "InputRead": 0x9a,
+        "InputReadExt": 0x9e,
+        "InputReadSI": 0x9d
       },
       OUTPUT_PORT = {
         "A": 0x01,
@@ -66,6 +103,111 @@
         "Int": 0x83,    // 4 bytes
         "String": 0x84  // null-terminated string
       };
+
+
+    function waitForResponse(callback) {
+      bt.read({"socket": current_socket}, function (data) {
+        var result = new global.Uint8Array(data);
+        if (result.length > 0) {
+          try { callback(result); } catch (e) {
+            con.log("Error calling connect callback", e);
+          }
+        } else {
+          global.setTimeout(function () {
+            waitForResponse(callback);
+          }, 10);
+        }
+      });
+    }
+
+    function safeCallback(callback, data, error) {
+      if (!!callback) {
+        global.setTimeout(function () {
+          try { callback(data, error); } catch(e) {
+            con.log("Error calling connect callback", e);
+          }
+        }, 0);
+      }
+    }
+
+    function Command(type, globalSize, localSize) {
+      this.type = type;
+      this.data = [];
+      
+      this.data.push(type);
+
+      if (type === COMMAND_TYPE.DirectReply || type === COMMAND_TYPE.DirectNoReply) {
+        // 2 bytes (llllllgg gggggggg)
+        this.data.push(globalSize & 0xFF);
+        this.data.push(((localSize << 2) | ((globalSize >> 8) & 0x03)) & 0xFF);
+      }
+    }
+    
+    Command.prototype.addOpCode = function (code) {
+      if (code instanceof Array) {
+        this.data.push(code[0]);
+        this.data.push(code[1]);
+      } else {
+        this.data.push(code);
+      }
+    };
+    
+    Command.prototype.add = function (value) {
+      this.data.push(value);
+    };
+    
+    Command.prototype.addGlobalIndex = function (index) {
+      this.data.push(0xE1);
+      this.data.push(index);
+    };
+    
+    Command.prototype.addByte = function (value) {
+      this.data.push(PARAMETER_SIZE.Byte);
+      this.data.push(value);
+    };
+    
+    Command.prototype.addInt = function (value) {
+      this.data.push(PARAMETER_SIZE.Int);
+      this.data.push(value);
+      this.data.push(value >> 8);
+      this.data.push(value >> 16);
+      this.data.push(value >> 24);
+    };
+
+    Command.prototype.execute = function (callback) {
+      var buffer, view, i, l, that = this;
+
+      if (!current_device || !current_socket) {
+        safeCallback(callback, null, "No connection");
+        return;
+      }
+      
+      if (seq >= 0xFFFF) {
+        seq = 0x0000;
+      }
+      seq += 1;
+      
+      l = this.data.length + 2;
+      buffer = new global.ArrayBuffer(l + 2);
+      view = new global.Uint8Array(buffer);
+      view[0] = l & 0xFF;
+      view[1] = (l >> 8) & 0xFF;
+      view[2] = seq & 0xFF;
+      view[3] = (seq >> 8) & 0xFF;
+
+      for (i = 0; i < this.data.length; i++) {
+        view[4 + i] = this.data[i] & 0xFF;
+      }
+      bt.write({"socket": current_socket, "data": buffer}, function () {
+        if (that.type ===  COMMAND_TYPE.DirectReply) {
+          waitForResponse(function (data, error) {
+            safeCallback(callback, data, error);
+          });
+        } else {
+          safeCallback(callback, true); 
+        }
+      });
+    };
 
     function onDeviceDiscovered(device) {
       con.log(device);
@@ -128,59 +270,6 @@
           });
         });
       }
-    }
-
-    function rawwrite(data, callback) {
-      var buffer, view, i, l;
-
-      if (seq >= 0xFFFF) {
-        seq = 0x0000;
-      }
-      seq += 1;
-
-      if (!current_device || !current_socket) {
-        if (!!callback) {
-          try { callback(); } catch (e) {
-            con.log("Error calling connect callback", e);
-          }
-        }
-        return;
-      }
-      l = data.length + 2;
-      buffer = new global.ArrayBuffer(l + 2);
-      view = new global.Uint8Array(buffer);
-      view[0] = l & 0xFF;
-      view[1] = (l >> 8) & 0xFF;
-      view[2] = (seq >> 8) & 0xFF;
-      view[3] = seq & 0xFF;
-      for (i = 0; i < data.length; i++) {
-        view[4 + i] = data[i] & 0xFF;
-      }
-      bt.write({"socket": current_socket, "data": buffer}, function (r) {
-        if (!!callback) {
-          try { callback(); } catch (e) {
-            con.log("Error calling connect callback", e);
-          }
-        }
-      });
-    }
-
-    function write(commandType, globalSize, localSize, data, callback) {
-      var command = [], i;
-
-      command.push(commandType);
-
-      if (commandType === COMMAND_TYPE.DirectReply || commandType === COMMAND_TYPE.DirectNoReply) {
-        // 2 bytes (llllllgg gggggggg)
-        command.push(globalSize & 0xFF);
-        command.push(((localSize << 2) | ((globalSize >> 8) & 0x03)) & 0xFF);
-      }
-
-      for (i = 0; i < data.length; i++) {
-        command.push(data[i] & 0xFF);
-      }
-
-      rawwrite(command, callback);
     }
 
     function onConnection(socket) {
@@ -268,7 +357,7 @@
             }
           }
         } else {
-          con.log("Sphero disconnected");
+          con.log("EV3 disconnected");
           if (!!callback) {
             try { callback(); } catch (e) {
               con.log("Error calling disconnect callback", e);
@@ -308,86 +397,133 @@
     this.motors = {};
 
     this.motors.start = function (ports, callback) {
-      write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStart, 0, ports], callback);
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      command.addOpCode(OP_CODE.OutputStart);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.execute(callback);
     };
 
     this.motors.turnAtPower = function (ports, power, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
       // Valid power values are between -100 and +100
       power = Math.min(100, Math.max(-100, power));
-      write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputPower, 0, ports, PARAMETER_SIZE.Byte, power], callback);
+
+      command.addOpCode(OP_CODE.OutputPower);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(power);
+      
+      command.execute(callback);
     };
 
     this.motors.turnAtSpeed = function (ports, speed, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
+      // Valid speed values are between -100 and +100
       speed = Math.min(100, Math.max(-100, speed));
-      write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputSpeed, 0, ports, PARAMETER_SIZE.Byte, speed], callback);
+
+      command.addOpCode(OP_CODE.OutputSpeed);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(speed);
+      
+      command.execute(callback);
     };
     
     this.motors.stepAtPower = function (ports, power, rampup, constant, rampdown, brake, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
+      // Valid power values are between -100 and +100
       power = Math.min(100, Math.max(-100, power));
-      write(
-        COMMAND_TYPE.DirectNoReply, 0, 0,
-        [
-          OP_CODE.OutputStepPower, 0, ports,
-          PARAMETER_SIZE.Byte, power,
-          PARAMETER_SIZE.Int, rampup, rampup >> 8, rampup >> 16, rampup >> 24,
-          PARAMETER_SIZE.Int, constant, constant >> 8, constant >> 16, constant >> 24,
-          PARAMETER_SIZE.Int, rampdown, rampdown >> 8, rampdown >> 16, rampdown >> 24,
-          PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00
-        ],
-        callback
-      );
+
+      command.addOpCode(OP_CODE.OutputStepPower);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(power);
+      command.addInt(rampup);
+      command.addInt(constant);
+      command.addInt(rampdown);
+      command.addByte(brake ? 1 : 0);
+      
+      command.execute(callback);
     };
     
     this.motors.stepAtSpeed = function (ports, speed, rampup, constant, rampdown, brake, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
+      // Valid speed values are between -100 and +100
       speed = Math.min(100, Math.max(-100, speed));
-      write(
-        COMMAND_TYPE.DirectNoReply, 0, 0,
-        [
-          OP_CODE.OutputStepSpeed, 0, ports,
-          PARAMETER_SIZE.Byte, speed,
-          PARAMETER_SIZE.Int, rampup, rampup >> 8, rampup >> 16, rampup >> 24,
-          PARAMETER_SIZE.Int, constant, constant >> 8, constant >> 16, constant >> 24,
-          PARAMETER_SIZE.Int, rampdown, rampdown >> 8, rampdown >> 16, rampdown >> 24,
-          PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00
-        ],
-        callback
-      );
+
+      command.addOpCode(OP_CODE.OutputStepSpeed);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(speed);
+      command.addInt(rampup);
+      command.addInt(constant);
+      command.addInt(rampdown);
+      command.addByte(brake ? 1 : 0);
+      
+      command.execute(callback);
     };
     
     this.motors.turnAtPowerForTime = function (ports, power, rampup, constant, rampdown, brake, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
+      // Valid power values are between -100 and +100
       power = Math.min(100, Math.max(-100, power));
-      write(
-        COMMAND_TYPE.DirectNoReply, 0, 0,
-        [
-          OP_CODE.OutputTimePower, 0, ports,
-          PARAMETER_SIZE.Byte, power,
-          PARAMETER_SIZE.Int, rampup, rampup >> 8, rampup >> 16, rampup >> 24,
-          PARAMETER_SIZE.Int, constant, constant >> 8, constant >> 16, constant >> 24,
-          PARAMETER_SIZE.Int, rampdown, rampdown >> 8, rampdown >> 16, rampdown >> 24,
-          PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00
-        ],
-        callback
-      );
+
+      command.addOpCode(OP_CODE.OutputTimePower);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(power);
+      command.addInt(rampup);
+      command.addInt(constant);
+      command.addInt(rampdown);
+      command.addByte(brake ? 1 : 0);
+      
+      command.execute(callback);
     };
     
     this.motors.turnAtSpeedForTime = function (ports, speed, rampup, constant, rampdown, brake, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
+      // Valid speed values are between -100 and +100
       speed = Math.min(100, Math.max(-100, speed));
-      write(
-        COMMAND_TYPE.DirectNoReply, 0, 0,
-        [
-          OP_CODE.OutputTimeSpeed, 0, ports,
-          PARAMETER_SIZE.Byte, speed,
-          PARAMETER_SIZE.Int, rampup, rampup >> 8, rampup >> 16, rampup >> 24,
-          PARAMETER_SIZE.Int, constant, constant >> 8, constant >> 16, constant >> 24,
-          PARAMETER_SIZE.Int, rampdown, rampdown >> 8, rampdown >> 16, rampdown >> 24,
-          PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00
-        ],
-        callback
-      );
+
+      command.addOpCode(OP_CODE.OutputTimeSpeed);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(speed);
+      command.addInt(rampup);
+      command.addInt(constant);
+      command.addInt(rampdown);
+      command.addByte(brake ? 1 : 0);
+      
+      command.execute(callback);
     };
 
     this.motors.stop = function (ports, brake, callback) {
-      write(COMMAND_TYPE.DirectNoReply, 0, 0, [OP_CODE.OutputStop, 0, ports, PARAMETER_SIZE.Byte, brake ? 0x01 : 0x00], callback);
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      command.addOpCode(OP_CODE.OutputStop);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(brake ? 1 : 0);
+
+      command.execute(callback);
+    };
+    
+    this.getFirmwareVersion = function (callback) {
+      var command = new Command(COMMAND_TYPE.DirectReply, 0x10, 0);
+      command.addOpCode(OP_CODE.UIRead_GetFirmware);
+      command.addByte(0x10);
+      command.addGlobalIndex(0);
+      
+      command.execute(function (data, error) {
+        // TODO: extract actual data
+        safeCallback(callback, data, error);
+      });
     };
 
     // Parameter values to be used in functions
@@ -397,16 +533,13 @@
 
     // Functions/parameters mainly meant for debugging
     this.debug = {};
-    this.debug.write = function (commandType, globalSize, localSize, data) {
-      write(commandType, globalSize, localSize, data);
-    };
-    this.debug.rawwrite = function (data) { rawwrite(data); };
     this.debug.getSocket = function () { return current_socket; };
     this.debug.getDevice = function () { return current_device; };
     this.debug.getProfile = function () { return profile; };
     this.debug.COMMAND_TYPE = COMMAND_TYPE;
     this.debug.OP_CODE = OP_CODE;
     this.debug.PARAMETER_SIZE = PARAMETER_SIZE;
+    this.debug.Command = Command;
   }
 
   global.ev3 = new EV3();
