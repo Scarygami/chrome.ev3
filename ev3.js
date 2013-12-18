@@ -87,9 +87,19 @@
         "InputDevice_ClearAll": [0x99, 0x0A],
         "InputDevice_ClearChanges": [0x99, 0x1A],
         
-        "InputRead": 0x9a,
-        "InputReadExt": 0x9e,
-        "InputReadSI": 0x9d
+        "InputRead": 0x9A,
+        "InputReadExt": 0x9E,
+        "InputReadSI": 0x9D
+      },
+      INPUT_PORT = {
+        "One": 0x00,
+        "Two": 0x01,
+        "Three": 0x02,
+        "Four": 0x03,
+        "A": 0x10,
+        "B": 0x11,
+        "C": 0x12,
+        "D": 0x13
       },
       OUTPUT_PORT = {
         "A": 0x01,
@@ -103,6 +113,21 @@
         "Short": 0x82,  // 2 bytes
         "Int": 0x83,    // 4 bytes
         "String": 0x84  // null-terminated string
+      },
+      POLARITY = {
+        "Backward": -1,
+        "Opposite": 0,
+        "Forward": 1
+      },
+      BRICK_BUTTON = {
+        "None": 0,
+        "Up": 1,
+        "Enter": 2,
+        "Down": 3,
+        "Right": 4,
+        "Left": 5,
+        "Back": 6,
+        "Any": 7,
       };
 
     function safeCallback(callback, data, error) {
@@ -195,12 +220,29 @@
       this.data.push(value);
     };
     
+    Command.prototype.addShort = function (value) {
+      this.data.push(PARAMETER_SIZE.Short);
+      this.data.push(value);
+      this.data.push(value >> 8);      
+    };
+    
     Command.prototype.addInt = function (value) {
       this.data.push(PARAMETER_SIZE.Int);
       this.data.push(value);
       this.data.push(value >> 8);
       this.data.push(value >> 16);
       this.data.push(value >> 24);
+    };
+    
+    // TODO: only works for "normal" characters so far...
+    Command.prototype.addString = function (value) {
+      var i;
+      this.data.push(PARAMETER_SIZE.String);
+      
+      for (i = 0; i < value.length; i++) {
+        this.data.push(value.charCodeAt(i)); 
+      }
+      this.data.push(0x00);
     };
 
     Command.prototype.execute = function (callback) {
@@ -534,6 +576,56 @@
       commandQueue.add(command, callback);
     };
 
+    this.motors.setPolarity = function (ports, polarity, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      command.addOpCode(OP_CODE.OutputPolarity);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(polarity);
+
+      commandQueue.add(command, callback);
+    };
+
+    this.motors.stepSync = function (ports, speed, turnRatio, steps, brake) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
+      // Valid speed values are between -100 and +100
+      speed = Math.min(100, Math.max(-100, speed));
+      
+      // Valid turnRatio values are between -200 and +200
+      turnRatio = Math.min(200, Math.max(-200, turnRatio));
+
+      command.addOpCode(OP_CODE.OutputStepSync);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(speed);
+      command.addShort(turnRatio);
+      command.addInt(steps);
+      command.addByte(brake ? 1 : 0);
+      
+      commandQueue.add(command, callback);
+    };
+
+    this.motors.timeSync = function (ports, speed, turnRatio, time, brake) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
+      // Valid speed values are between -100 and +100
+      speed = Math.min(100, Math.max(-100, speed));
+      
+      // Valid turnRatio values are between -200 and +200
+      turnRatio = Math.min(200, Math.max(-200, turnRatio));
+
+      command.addOpCode(OP_CODE.OutputTimeSync);
+      command.addByte(0x00);
+      command.addByte(ports);
+      command.addByte(speed);
+      command.addShort(turnRatio);
+      command.addInt(time);
+      command.addByte(brake ? 1 : 0);
+      
+      commandQueue.add(command, callback);
+    };
+
     this.motors.stop = function (ports, brake, callback) {
       var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
       command.addOpCode(OP_CODE.OutputStop);
@@ -544,7 +636,9 @@
       commandQueue.add(command, callback);
     };
     
-    this.getFirmwareVersion = function (callback) {
+    this.brick = {};
+    
+    this.brick.getFirmwareVersion = function (callback) {
       var command = new Command(COMMAND_TYPE.DirectReply, 0x10, 0);
       command.addOpCode(OP_CODE.UIRead_GetFirmware);
       command.addByte(0x10);
@@ -552,13 +646,79 @@
       
       commandQueue.add(command, function (data, error) {
         // TODO: extract actual data
+        con.log(data, error);
         safeCallback(callback, data, error);
       });
     };
+    
+    // Resets all ports and devices to defaults.
+    this.brick.clearAllDevices = function (callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      command.addOpCode(OP_CODE.InputDevice_ClearAll);
+      command.addByte(0x00);
+      
+      commandQueue.add(command, callback);
+    };
+    
+    // Clears changes on specified port
+    this.brick.clearChanges = function (port, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      command.addOpCode(OP_CODE.InputDevice_ClearChanges);
+      command.addByte(0x00);
+      command.addByte(port);
+      
+      commandQueue.add(command, callback);
+    };
+    
+    this.brick.isButtonPressed = function (button, callback) {
+      var command = new Command(COMMAND_TYPE.DirectReply, 0x01, 0);
+      command.addOpCode(OP_CODE.UIButton_Pressed);
+      command.addByte(button);
+      command.addGlobalIndex(0);
+      
+      commandQueue.add(command, function (data, error) {
+        // TODO: extract actual data
+        con.log(data, error);
+        safeCallback(callback, data, error);
+      });
+    };
+    
+    this.sound = {};
+    
+    // Plays a tone of the specified frequency for the specified time.
+    this.sound.playTone = function (volume, frequency, duration, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
+      // Valid volume values are between 0 and 100
+      volume = Math.min(100, Math.max(0, volume));
+      
+      command.addOpCode(OP_CODE.Sound_Tone);
+      command.addByte(volume);
+      command.addShort(frequency);
+      command.addShort(duration);
+      
+      commandQueue.add(command, callback);
+    };
+
+    // Play a sound file stored on the EV3 brick
+    this.sound.playSound = function (volume, filename) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      
+      // Valid volume values are between 0 and 100
+      volume = Math.min(100, Math.max(0, volume));
+      
+      command.addOpCode(OP_CODE.Sound_Play);
+      command.addByte(volume);
+      command.addString(filename);
+      
+      commandQueue.add(command, callback);
+    };
 
     // Parameter values to be used in functions
-
+    this.INPUT_PORT = INPUT_PORT;
     this.OUTPUT_PORT = OUTPUT_PORT;
+    this.POLARITY = POLARITY;
+    this.BRICK_BUTTON = BRICK_BUTTON;
 
 
     // Functions/parameters mainly meant for debugging
