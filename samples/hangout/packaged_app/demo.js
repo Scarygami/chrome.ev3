@@ -32,18 +32,18 @@
       if (message.command === "move") {
         switch(message.direction) {
           case "forward":
-            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.A | ev3.OUTPUT_PORT.D, 50, 50, 500, 50, false);
+            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.A | ev3.OUTPUT_PORT.D, 40, 50, 500, 50, false);
             break;
           case "back":
-            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.A | ev3.OUTPUT_PORT.D, -50, 50, 500, 50, false);
+            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.A | ev3.OUTPUT_PORT.D, -40, 50, 500, 50, false);
             break;
           case "right":
-            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.A, 50, 50, 500, 50, false);
-            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.D, -50, 50, 500, 50, false);
+            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.A, 40, 50, 250, 50, false);
+            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.D, -40, 50, 250, 50, false);
             break;
           case "left":
-            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.A, -50, 50, 500, 50, false);
-            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.D, 50, 50, 500, 50, false);
+            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.A, -40, 50, 250, 50, false);
+            ev3.motors.turnAtSpeedForTime(ev3.OUTPUT_PORT.D, 40, 50, 250, 50, false);
             break;
         }
         sendResponse({"success": true});
