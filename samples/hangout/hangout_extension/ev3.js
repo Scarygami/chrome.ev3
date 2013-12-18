@@ -44,7 +44,7 @@
     doc.getElementById("left").onclick = this.move.bind(this, "left");
 
     global.addEventListener("message", this.onMessage.bind(this), false);
-    
+
     this.sendExtensionMessage({"command": "checkExtension"});
   };
 
@@ -88,7 +88,7 @@
   };
 
   hapi.onApiReady.add(function (event) {
-    if (event.apiReady) {
+    if (event.isApiReady) {
       con.log("Hangout API Ready...");
       global.ev3 = new EV3();
       global.ev3.initialize();
