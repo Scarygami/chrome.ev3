@@ -128,6 +128,18 @@
         "Left": 5,
         "Back": 6,
         "Any": 7,
+      },
+      LED_PATTERN = {
+        "Black": 0,
+        "Green": 1,
+        "Red": 2,
+        "Orange": 3,
+        "GreenFlash": 4,
+        "RedFlash": 5,
+        "OrangeFlash": 6,
+        "GreenPulse": 7,
+        "RedPulse": 8,
+        "OrangePulse": 9
       };
 
     function safeCallback(callback, data, error) {
@@ -683,6 +695,38 @@
       });
     };
     
+    this.brick.setLedPattern = function (ledPattern, callback) {
+      var command = new Command(COMMAND_TYPE.DirectNoReply, 0, 0);
+      command.addOpCode(OP_CODE.UIWrite_LED);
+      command.addByte(ledPattern);
+      
+      commandQueue.add(command, callback);
+    };
+    
+    this.sensors = {};
+    
+    this.sensors.readySI = function (port, mode) {
+      var command = new Command(COMMAND_TYPE.DirectReply, 0x04, 0);
+      
+      command.addOpCode(OP_CODE.InputDevice_ReadySI);
+      command.addByte(0x00);
+      command.addByte(port);
+      command.addByte(0x00);
+      command.addByte(mode);
+      command.addByte(0x01);
+      command.addGlobalIndex(0x00);
+      
+      commandQueue.add(command, function (data, error) {
+        var result, value;
+        if (!!data && data.length == 9) {
+          value = new global.Uint8Array([data[5], data[6], data[7], data[8]]);
+          result = (new global.Float32Array(value.buffer)[0]);
+        }
+        con.log(result, data, error);
+        safeCallback(callback, result, error);
+      });
+    };
+    
     this.sound = {};
     
     // Plays a tone of the specified frequency for the specified time.
@@ -719,6 +763,7 @@
     this.OUTPUT_PORT = OUTPUT_PORT;
     this.POLARITY = POLARITY;
     this.BRICK_BUTTON = BRICK_BUTTON;
+    this.LED_PATTERN = LED_PATTERN;
 
 
     // Functions/parameters mainly meant for debugging
