@@ -31,7 +31,7 @@
     evading = true;
     evadeTime = 0;
     ev3.motors.stop(ev3.OUTPUT_PORT.A | ev3.OUTPUT_PORT.D);
-    ev3.motors.turnAtPower(ev3.OUTPUT_PORT.A | ev3.OUTPUT_PORT.D, -25);
+    ev3.motors.turnAtPower(ev3.OUTPUT_PORT.A | ev3.OUTPUT_PORT.D, -50);
     ev3.motors.start(ev3.OUTPUT_PORT.A | ev3.OUTPUT_PORT.D, next);
   }
   
@@ -55,7 +55,7 @@
     var
       now = (new Date()).getTime(),
       elapsed = now - currentTime;
-      
+    
     currentTime = now;
     if (stopping) {
       stopping = false;
@@ -68,7 +68,7 @@
       ev3.sensors.readySI(ev3.INPUT_PORT.Four, 0, function (value) {
         if (value <= 25) {
           running = false;
-          rotate();
+          evade();
         } else {
           // Touch sensor
           ev3.sensors.readySI(ev3.INPUT_PORT.One, 0, function (value) {
@@ -86,7 +86,7 @@
     
     if (evading) {
       evadeTime += elapsed;
-      if (evadeTime > 1000) {
+      if (evadeTime > 1500) {
         evading = false;
         rotate();
       } else {
@@ -97,7 +97,7 @@
     
     if (rotating) {
       rotateTime += elapsed;
-      if (rotateTime > 1000) {
+      if (rotateTime > 1500) {
         rotating = false;
         run();
       } else {

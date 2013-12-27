@@ -707,7 +707,7 @@
     
     this.sensors = {};
     
-    this.sensors.readySI = function (port, mode) {
+    this.sensors.readySI = function (port, mode, callback) {
       var command = new Command(COMMAND_TYPE.DirectReply, 0x04, 0);
       
       command.addOpCode(OP_CODE.InputDevice_ReadySI);
@@ -724,7 +724,6 @@
           value = new global.Uint8Array([data[5], data[6], data[7], data[8]]);
           result = (new global.Float32Array(value.buffer)[0]);
         }
-        con.log(result, data, error);
         safeCallback(callback, result, error);
       });
     };
